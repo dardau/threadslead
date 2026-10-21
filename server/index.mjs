@@ -2,12 +2,15 @@ import express from 'express'
 import { chromium } from 'playwright'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const app = express()
 const port = 4318
-const profileDirectory = resolve('.local/threads-browser')
-const watchFile = resolve('.local/watch.json')
-const findingsFile = resolve('.local/findings.json')
+const rootDirectory = fileURLToPath(new URL('../', import.meta.url))
+const localDirectory = resolve(rootDirectory, '.local')
+const profileDirectory = resolve(localDirectory, 'threads-browser')
+const watchFile = resolve(localDirectory, 'watch.json')
+const findingsFile = resolve(localDirectory, 'findings.json')
 let context = null
 let scanRunning = false
 let watch = { enabled: false, projectId: '', queries: [], intervalMinutes: 60, nextRunAt: null, lastRunAt: null, lastError: null }
@@ -18,7 +21,7 @@ async function readJson(path, fallback) {
 }
 
 async function saveJson(path, value) {
-  await mkdir(resolve('.local'), { recursive: true })
+  await mkdir(localDirectory, { recursive: true })
   await writeFile(path, JSON.stringify(value, null, 2), 'utf8')
 }
 
