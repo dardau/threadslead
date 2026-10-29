@@ -6,6 +6,17 @@ const SALES_OR_WORK = /(?:^| )(?:ваканси[а-я]*|работу|сотру�
 
 export const DEMO_TOPIC_WORDS = 'программир, кодинг, вайбкодинг, веб-разработ, python, создание игр, разработка игр'
 export const DEMO_AUDIENCE_WORDS = 'ребен, ребён, дет, подрост, школьник, сын, доч, 7–11 кл'
+export const AGE_OPTIONS = [1, 7, 30]
+
+export function ageDaysFor(project) {
+  const days = Number(project.maxAgeDays)
+  return AGE_OPTIONS.includes(days) ? days : 7
+}
+
+export function isRecentPost(post, project, now = Date.now()) {
+  const postedAt = Date.parse(post.timestamp)
+  return Number.isFinite(postedAt) && postedAt <= now + 5 * 60000 && postedAt >= now - ageDaysFor(project) * 86400000
+}
 
 function normalize(value) {
   return String(value || '').toLocaleLowerCase('ru-RU').replace(/ё/g, 'е').replace(/[–—-]/g, ' ').replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
@@ -18,7 +29,6 @@ function words(value) {
 function hasTerm(text, term) {
   const normalized = normalize(term)
   if (!normalized) return false
-  const padded = ` ${text} `
   if (normalized.includes(' ')) {
     const termWords = normalized.split(' ')
     const textWords = text.split(' ')
@@ -45,8 +55,7 @@ export function assessPost(post, project) {
   const topics = words(topicWordsFor(project))
   const audience = words(audienceWordsFor(project))
   if (!text || !topics.length) return { relevant: false, reason: 'Нет темы для проверки' }
-  const postedAt = Date.parse(post.timestamp)
-  if (!Number.isFinite(postedAt) || postedAt < Date.now() - 60 * 86400000) return { relevant: false, reason: 'Старше 60 дней или без даты' }
+  if (!isRecentPost(post, project)) return { relevant: false, reason: 'Вне выбранного периода или без даты' }
   if (!topics.some((term) => hasTerm(text, term))) return { relevant: false, reason: 'Нет темы в тексте поста' }
   if (audience.length && !audience.some((term) => hasTerm(text, term))) return { relevant: false, reason: 'Другая аудитория' }
   if (SALES_OR_WORK.test(text)) return { relevant: false, reason: 'Похоже на рекламу или вакансию' }
