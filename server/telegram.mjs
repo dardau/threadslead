@@ -101,8 +101,12 @@ export class TelegramBridge {
 
   async sendText(text) {
     if (!this.state.chatId) return false
-    await this.api('sendMessage', { chat_id: this.state.chatId, text, link_preview_options: { is_disabled: true } }, this.state.token, 10000)
+    await this.sendTo(this.state.chatId, text)
     return true
+  }
+
+  async sendTo(chatId, text) {
+    await this.api('sendMessage', { chat_id: chatId, text, link_preview_options: { is_disabled: true } }, this.state.token, 10000)
   }
 
   async notify(posts) {
@@ -151,7 +155,11 @@ export class TelegramBridge {
     const [commandRaw, argument] = message.text.trim().split(/\s+/, 2)
     const command = commandRaw.toLowerCase().replace(/@.+$/, '')
     if (!this.state.chatId) {
-      if (command !== '/start' || argument !== this.state.pairCode || message.chat.type !== 'private') return
+      if (message.chat.type !== 'private') return
+      if (command !== '/start' || argument !== this.state.pairCode) {
+        if (command === '/start') await this.sendTo(chatId, 'Для подключения нужен код из приложения «Искра». Открой ссылку на бота в разделе «Ссылки в Telegram» или отправь /start и код через пробел.')
+        return
+      }
       this.state.chatId = chatId
       this.state.chatName = message.from?.first_name || message.from?.username || 'Телефон'
       this.state.pairCode = ''

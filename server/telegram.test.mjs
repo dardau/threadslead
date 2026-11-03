@@ -24,6 +24,7 @@ test('only the private chat with the pairing code can control the bot', async ()
   bridge.state.pairCode = '654321'
   bridge.api = async (method, body) => { if (method === 'sendMessage') sent.push(body); return {} }
   await bridge.handleMessage({ chat: { id: 1, type: 'private' }, text: '/start 000000' })
+  assert.match(sent[0].text, /нужен код/)
   await bridge.handleMessage({ chat: { id: 2, type: 'group' }, text: '/start 654321' })
   assert.equal(bridge.state.chatId, null)
   await bridge.handleMessage({ chat: { id: 3, type: 'private' }, from: { first_name: 'Дар' }, text: '/start 654321' })
