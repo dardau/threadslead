@@ -6,6 +6,7 @@ import {
   Plus, Radar, Search, Settings2, ShieldCheck, Sparkles, Trash2, X,
 } from 'lucide-react'
 import ContentStudio from './ContentStudio.jsx'
+import TelegramSetup from './TelegramSetup.jsx'
 import { ageDaysFor, assessPost, audienceWordsFor, isRecentPost, topicWordsFor } from './relevance.js'
 
 const STORAGE_KEY = 'threadslead:workspace:v1'
@@ -41,6 +42,7 @@ const isThreadsPost = (value) => {
   } catch { return false }
 }
 const categoryFor = (text) => /(ищу|ищем|посоветуйте|нужен|нужна|нужно|подскажите|порекомендуйте|где найти|хочу найти|хотим найти)/i.test(text) ? 'Запрос' : 'Обсуждение'
+const searchFilters = (project) => ({ topicWords: topicWordsFor(project), audienceWords: audienceWordsFor(project), maxAgeDays: ageDaysFor(project) })
 
 function readInitial() {
   try {
@@ -155,7 +157,7 @@ function App() {
     setScanning(true)
     setApiError('')
     try {
-      const response = await fetch('/api/scan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId: project.id, queries: searchQueries }) })
+      const response = await fetch('/api/scan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId: project.id, queries: searchQueries, filters: searchFilters(project) }) })
       const result = await response.json()
       if (!response.ok) throw new Error(result.error || 'Поиск не завершился')
       setBrowserOpen(true)
@@ -164,16 +166,23 @@ function App() {
       setScanInfo(result)
       setToast(`Поиск завершён: ${result.posts.filter((post) => isRecentPost(post, project)).length} публикаций за выбранный период`)
     } catch (error) {
-      setApiError(error.message)
+      if (error.message === 'Поиск остановлен.') setToast('Поиск остановлен')
+      else setApiError(error.message)
       fetch('/api/health').then((response) => response.json()).then((result) => setBrowserOpen(result.browserOpen)).catch(() => {})
     }
     finally { setScanning(false) }
+  }
+  const stopScan = async () => {
+    try {
+      await fetch('/api/scan/stop', { method: 'POST' })
+      setToast('Останавливаю поиск')
+    } catch { setApiError('Не удалось остановить поиск') }
   }
   const toggleWatch = async () => {
     setApiError('')
     try {
       const enabled = !(watch?.enabled && watch.projectId === project.id)
-      const response = await fetch('/api/watch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled, projectId: project.id, queries: searchQueries, intervalMinutes: Number(watchInterval) }) })
+      const response = await fetch('/api/watch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled, projectId: project.id, queries: searchQueries, filters: searchFilters(project), intervalMinutes: Number(watchInterval) }) })
       const result = await response.json()
       if (!response.ok) throw new Error(result.error || 'Не удалось изменить наблюдение')
       setWatch(result)
@@ -240,7 +249,7 @@ function App() {
           <div className="two-column overview-bottom"><div className="panel insight-panel"><div className="panel-top"><div className="panel-icon purple"><Activity size={18} /></div><span className="eyebrow-muted">ПРОВЕРКА ГИПОТЕЗЫ</span></div><h3>{directSignals === 0 ? 'Пока рано делать вывод' : directSignals < 5 ? 'Первые сигналы уже есть' : 'Спрос стоит изучить глубже'}</h3><p>{directSignals === 0 ? 'Найди и сохрани несколько конкретных запросов от разных людей. Это поможет понять, какой вопрос повторяется.' : `Сохранено ${directSignals} явных запросов. Посмотри, повторяется ли одна и та же проблема и подходят ли эти люди твоей аудитории.`}</p><div className="progress-track"><span style={{ width: `${queryProgress}%` }} /></div><small>{directSignals} / 5 запросов для первого качественного обзора</small></div><div className="panel quiet-panel"><div className="quiet-art"><span>✦</span><span>✳</span><span>✦</span></div><h3>Хороший поиск начинается с формулировок</h3><p>Ищи не название своей услуги, а слова, которыми человек описывает задачу: «ищу», «посоветуйте», «где найти».</p><button className="text-link" onClick={() => setView('demand')}>Настроить фразы <ArrowRight size={15} /></button></div></div>
         </>}
 
-        {view === 'demand' && <DemandView project={project} patchProject={patchProject} evidence={evidence} addEvidence={addEvidence} promoteLead={promoteLead} leads={leads} scanResults={scanResults} scanInfo={scanInfo} apiError={apiError} browserOpen={browserOpen} scanning={scanning} openBrowser={openBrowser} runScan={runScan} watch={watch} watchInterval={watchInterval} setWatchInterval={setWatchInterval} toggleWatch={toggleWatch} setModal={setModal} setToast={setToast} />}
+        {view === 'demand' && <DemandView project={project} patchProject={patchProject} evidence={evidence} addEvidence={addEvidence} promoteLead={promoteLead} leads={leads} scanResults={scanResults} scanInfo={scanInfo} apiError={apiError} browserOpen={browserOpen} scanning={scanning} openBrowser={openBrowser} runScan={runScan} stopScan={stopScan} watch={watch} watchInterval={watchInterval} setWatchInterval={setWatchInterval} toggleWatch={toggleWatch} searchQueries={searchQueries} setModal={setModal} setToast={setToast} />}
         {view === 'leads' && <LeadsView leads={leads} filter={leadFilter} setFilter={setLeadFilter} updateLead={(id, patch) => setData((current) => ({ ...current, leads: current.leads.map((lead) => lead.id === id ? { ...lead, ...patch } : lead) }))} removeLead={(id) => setData((current) => ({ ...current, leads: current.leads.filter((lead) => lead.id !== id) }))} goDemand={() => setView('demand')} />}
         {view === 'content' && <ContentStudio key={project.id} drafts={drafts} project={project} patchProject={patchProject} addDrafts={addDrafts} updateDraft={(id, patch) => setData((current) => ({ ...current, drafts: current.drafts.map((draft) => draft.id === id ? { ...draft, ...patch } : draft) }))} removeDraft={(id) => setData((current) => ({ ...current, drafts: current.drafts.filter((draft) => draft.id !== id) }))} setToast={setToast} />}
         {view === 'settings' && <SettingsView project={project} patchProject={patchProject} exportData={exportData} browserOpen={browserOpen} openBrowser={openBrowser} apiError={apiError} />}
@@ -272,7 +281,7 @@ function EvidenceForm({ onClose, onSubmit }) {
   return <Modal title="Сохранить публикацию" subtitle="Добавь конкретный пост, который помогает проверить твою гипотезу." onClose={onClose}><form className="stack-form" noValidate onSubmit={(event) => { event.preventDefault(); onSubmit(entry) }}><label>Ссылка на пост Threads<input autoFocus required type="url" value={entry.url} onChange={change('url')} placeholder="https://www.threads.com/@user/post/..." /></label><label>Что написал человек<textarea className="resize-none" rows="4" value={entry.text} onChange={change('text')} placeholder="Вставь ключевую мысль из публикации" /></label><div className="form-row"><label>Тип сигнала<select value={entry.category} onChange={change('category')}><option>Запрос</option><option>Обсуждение</option><option>Конкурент</option></select></label><label>Поисковая фраза<input value={entry.query} onChange={change('query')} placeholder="Необязательно" /></label></div><div className="modal-actions"><button type="button" className="button button-secondary" onClick={onClose}>Отмена</button><button className="button button-primary" type="submit">Сохранить пост</button></div></form></Modal>
 }
 
-function DemandView({ project, patchProject, evidence, addEvidence, promoteLead, leads, scanResults, scanInfo, apiError, browserOpen, scanning, openBrowser, runScan, watch, watchInterval, setWatchInterval, toggleWatch, setModal, setToast }) {
+function DemandView({ project, patchProject, evidence, addEvidence, promoteLead, leads, scanResults, scanInfo, apiError, browserOpen, scanning, openBrowser, runScan, stopScan, watch, watchInterval, setWatchInterval, toggleWatch, searchQueries, setModal, setToast }) {
   const [newPhrase, setNewPhrase] = useState('')
   const [showDiscussions, setShowDiscussions] = useState(false)
   const [showExcluded, setShowExcluded] = useState(false)
@@ -308,8 +317,9 @@ function DemandView({ project, patchProject, evidence, addEvidence, promoteLead,
       </section>
       <section className="panel scan-panel"><div className="panel-header"><div><div className="section-kicker">02 · ПОИСК</div><h2>Запусти поиск в Threads</h2><p>Браузер последовательно откроет свежую выдачу по активным фразам.</p></div><span className={`connection-badge ${browserOpen ? 'connected' : ''}`}><span /> {browserOpen ? 'Браузер открыт' : 'Не подключён'}</span></div>
         {project.region && <label className="region-option"><input type="checkbox" checked={Boolean(project.includeRegion)} onChange={(event) => patchProject({ includeRegion: event.target.checked })} /> Добавлять «{project.region}» к запросам</label>}
-        <div className="scan-actions"><button className="button button-secondary" onClick={openBrowser}><ExternalLink size={17} /> {browserOpen ? 'Открыть Threads' : 'Открыть браузер'}</button><button className="button button-primary" onClick={runScan} disabled={scanning || !active.length}>{scanning ? <LoaderCircle className="spin" size={17} /> : <Radar size={17} />} {scanning ? 'Идёт поиск…' : 'Найти публикации'}</button></div><p className="subtle-note"><ShieldCheck size={15} /> Войди в Threads в отдельном окне. Логин и пароль приложение не получает.</p>{active.length > 8 && <p className="warning-note">За один запуск проверяются первые 8 активных фраз.</p>}{apiError && <div className="error-box">{apiError}</div>}</section>
-      <section className="panel watch-panel"><div className="panel-header"><div><div className="section-kicker">АВТОМАТИЗАЦИЯ</div><h2>Следить за новыми постами</h2><p>Пока приложение запущено, поиск будет повторяться через заданный интервал.</p></div><span className={`connection-badge ${watch?.enabled && watch.projectId === project.id ? 'connected' : ''}`}><span /> {watch?.enabled && watch.projectId === project.id ? 'Активно' : 'Выключено'}</span></div><div className="watch-controls"><label>Проверять каждые <select value={watchInterval} onChange={(event) => setWatchInterval(Number(event.target.value))}><option value="30">30 минут</option><option value="60">1 час</option><option value="180">3 часа</option><option value="360">6 часов</option></select></label><button className={`button ${watch?.enabled && watch.projectId === project.id ? 'button-secondary' : 'button-primary'}`} onClick={toggleWatch} disabled={!active.length && !(watch?.enabled && watch.projectId === project.id)}>{watch?.enabled && watch.projectId === project.id ? 'Остановить' : 'Включить наблюдение'}</button></div>{watch?.enabled && watch.projectId === project.id && <p className="subtle-note"><Clock3 size={15} /> Следующая проверка: {dateTimeText(watch.nextRunAt)}. Результаты сохраняются на этом компьютере.</p>}{watch?.lastError && watch.projectId === project.id && <div className="error-box">Последняя проверка: {watch.lastError}</div>}</section>
+        <div className="scan-actions"><button className="button button-secondary" onClick={openBrowser}><ExternalLink size={17} /> {browserOpen ? 'Открыть Threads' : 'Открыть браузер'}</button><button className={`button ${scanning ? 'button-secondary' : 'button-primary'}`} onClick={scanning ? stopScan : runScan} disabled={!scanning && !active.length}>{scanning ? <X size={17} /> : <Radar size={17} />} {scanning ? 'Остановить поиск' : 'Найти публикации'}</button></div><p className="subtle-note"><ShieldCheck size={15} /> Войди в Threads в отдельном окне. Логин и пароль приложение не получает.</p>{active.length > 8 && <p className="warning-note">За один запуск проверяются первые 8 активных фраз.</p>}{apiError && <div className="error-box">{apiError}</div>}</section>
+      <section className="panel watch-panel"><div className="panel-header"><div><div className="section-kicker">АВТОМАТИЗАЦИЯ</div><h2>Следить за новыми постами</h2><p>Пока приложение запущено, поиск будет повторяться через заданный интервал.</p></div><span className={`connection-badge ${watch?.enabled && watch.projectId === project.id ? 'connected' : ''}`}><span /> {watch?.enabled && watch.projectId === project.id ? 'Активно' : 'Выключено'}</span></div><div className="watch-controls"><label>Проверять каждые <select value={watchInterval} onChange={(event) => setWatchInterval(Number(event.target.value))}><option value="30">30 минут</option><option value="60">1 час</option><option value="180">3 часа</option><option value="360">6 часов</option></select></label><button className={`button ${watch?.enabled && watch.projectId === project.id ? 'button-secondary' : 'button-primary'}`} onClick={toggleWatch} disabled={!active.length && !(watch?.enabled && watch.projectId === project.id)}>{watch?.enabled && watch.projectId === project.id ? 'Остановить' : 'Включить наблюдение'}</button></div>{watch?.enabled && watch.projectId === project.id && <p className="subtle-note"><Clock3 size={15} /> Следующая проверка: {dateTimeText(watch.nextRunAt)}. Результаты сохраняются на этом компьютере.</p>}{watch?.enabled && watch.lastError && watch.projectId === project.id && <div className="error-box">Последняя проверка: {watch.lastError}</div>}</section>
+      <TelegramSetup project={project} queries={searchQueries} intervalMinutes={Number(watchInterval)} />
       <section className="panel results-panel">
         <div className="panel-header">
           <div>
